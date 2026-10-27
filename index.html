@@ -21,6 +21,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
 <script src="timing-engine.js"></script>
+<script src="numerology-batraa.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#f1f5f9;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;-webkit-font-smoothing:antialiased;}
@@ -95,7 +96,8 @@ function gG(day,month,year,nameNum,kuaM,kuaF){
   let lp=lpSum;while(lp>9)lp=String(lp).split('').reduce((a,b)=>a+parseInt(b),0);
   // Step 3: Combine all — DOB digits + Moolank + Bhagyank
   const allDigits=[...rawDigits];
-  if(bn>0)allDigits.push(bn);
+  // Born on 1–9, 10, 20 or 30: the date digit already is the King, so it is placed only once.
+  if(bn>0&&!window.Batraa.kingPlacedOnce(day))allDigits.push(bn);
   if(lp>0)allDigits.push(lp);
   // Step 4: Count occurrences in each box (1-9)
   const counts={};for(let i=1;i<=9;i++)counts[i]=0;
@@ -104,7 +106,10 @@ function gG(day,month,year,nameNum,kuaM,kuaF){
   for(let i=1;i<=9;i++){if(counts[i]>0)present.push(i);else missing.push(i)}
   return{counts,present,missing,birthNum:bn,lifeP:lp,nameNum:nameNum||0,kuaM:kuaM||0,kuaF:kuaF||0,digits:rawDigits,allDigits}
 }
-function gF(a,b){const f={1:[1,2,3,9],2:[2,1,3,6],3:[3,1,2,9],4:[4,5,6,7],5:[5,1,4,6],6:[6,2,5,8],7:[7,4,8,2],8:[8,3,6,5],9:[9,1,3,5]};const e={1:[4,8],2:[4,8],3:[6],4:[1,2,9],5:[2],6:[3],7:[1,9],8:[1,2,4],9:[4,7]};if(a===b)return"Same";if(f[a]?.includes(b))return"Friendly";if(e[a]?.includes(b))return"Hostile";return"Neutral"}
+// Number compatibility (Batraa method): how number b sits with number a's own lucky/unlucky lists.
+function gF(a,b){const r=window.Batraa.relation(a,b);return r==='Lucky'?'Friendly':r==='Unlucky'?'Hostile':'Neutral'}
+// Planetary friendship between Rashi lords (used only by the marriage kootas, not numerology).
+function gPF(a,b){const f={1:[1,2,3,9],2:[2,1,3,6],3:[3,1,2,9],4:[4,5,6,7],5:[5,1,4,6],6:[6,2,5,8],7:[7,4,8,2],8:[8,3,6,5],9:[9,1,3,5]};const e={1:[4,8],2:[4,8],3:[6],4:[1,2,9],5:[2],6:[3],7:[1,9],8:[1,2,4],9:[4,7]};if(a===b)return"Same";if(f[a]?.includes(b))return"Friendly";if(e[a]?.includes(b))return"Hostile";return"Neutral"}
 const KE={1:"Water",2:"Earth",3:"Wood",4:"Wood",6:"Metal",7:"Metal",8:"Earth",9:"Fire"};
 const KD={1:"North",2:"SW",3:"East",4:"SE",6:"NW",7:"West",8:"NE",9:"South"};
 const KG={east:[1,3,4,9],west:[2,6,7,8]};
@@ -711,13 +716,13 @@ function generatePersonalPDF(r, name, dn, lagna, maha, antar){
   // ── NAME ANALYSIS ──
   secHead('Name Number Analysis','Chaldean 10/10');
   line(`Official name "${name}" = ${r.nc.r} (${PN[r.nc.r]||''})${r.nc.c>9?` | Compound ${r.nc.c}: ${CO[r.nc.c]||''}`:''}`, 'body');
-  const nc_compat=gF(r.nc.r,r.b.r);
+  const nc_compat=gF(r.b.r,r.nc.r);
   if(nc_compat==='Friendly')line(`Name ${r.nc.r} is FRIENDLY with Moolank ${r.b.r} - name amplifies your natural energy.`,'pos');
   else if(nc_compat==='Hostile')line(`Name ${r.nc.r} CONFLICTS with Moolank ${r.b.r} - name works against natural energy. Consider spelling adjustment.`,'neg');
   else line(`Name ${r.nc.r} is Neutral with Moolank ${r.b.r}.`,'body');
   if(r.dc){
     line(`Daily name "${dn}" = ${r.dc.r} (${PN[r.dc.r]||''})${r.dc.c>9?` | Compound ${r.dc.c}: ${CO[r.dc.c]||''}`:''}`, 'body');
-    const dc_compat=gF(r.dc.r,r.b.r);
+    const dc_compat=gF(r.b.r,r.dc.r);
     if(dc_compat==='Friendly')line(`Daily name ${r.dc.r} is FRIENDLY with Moolank - reinforces positive energy.`,'pos');
     else if(dc_compat==='Hostile')line(`Daily name ${r.dc.r} CONFLICTS with Moolank - even informal use weakens energy.`,'neg');
   }
@@ -765,9 +770,9 @@ function generatePersonalPDF(r, name, dn, lagna, maha, antar){
     secHead('Relationships & Compatibility Pattern','Chaldean 8/10');
     line(r.md_deep.relation,'body');
     if(r.ni)line(`Vedic Gana: ${NAK_DEEP.gana_meaning[r.ni.gana]||''}`,'body');
-    const friends=[1,2,3,4,5,6,7,8,9].filter(n=>gF(r.b.r,n)==='Friendly'||gF(r.b.r,n)==='Same');
-    const enemies=[1,2,3,4,5,6,7,8,9].filter(n=>gF(r.b.r,n)==='Hostile');
-    line(`Compatible numbers: ${friends.join(', ')}  |  Handle carefully: ${enemies.join(', ')}`,'body');
+    const friends=window.Batraa.luckySet(r.b.r,r.lp.r);
+    const enemies=window.Batraa.unluckySet(r.b.r,r.lp.r);
+    line(`Lucky numbers (King ${r.b.r} + Queen ${r.lp.r}): ${friends.join(', ')||'none'}  |  Unlucky: ${enemies.join(', ')||'none'}`,'body');
     divider();
 
     // ── HEALTH ──
@@ -1075,8 +1080,8 @@ function PersonalReading(){
           {r.nc.l.split('').map((ch,i)=><span key={i} style={{background:'#f1f5f9',borderRadius:4,padding:'3px 7px',fontSize:12,border:`1px solid ${border}`}}><b style={{color:txt}}>{ch}</b><span style={{color:gold,fontSize:9,marginLeft:2}}>{CH[ch]}</span></span>)}
           <span style={{background:gold,color:'#0f172a',borderRadius:4,padding:'3px 10px',fontSize:12,fontWeight:'700'}}>={r.nc.t}={r.nc.r}</span>
         </div>
-        <Pt text={`Official name "${name}" vibrates at ${r.nc.r} (${PN[r.nc.r]}). ${gF(r.nc.r,r.b.r)==='Friendly'?'This name is FRIENDLY with your Moolank — it amplifies your natural energy.':gF(r.nc.r,r.b.r)==='Hostile'?'WARNING: This name CONFLICTS with your Moolank. The name you carry is working against your natural energy. Consider adjusting the spelling.':'This name is neutral with your Moolank — neither amplifying nor reducing.'}`} type={gF(r.nc.r,r.b.r)==='Friendly'?'pos':gF(r.nc.r,r.b.r)==='Hostile'?'neg':'info'}/>
-        {r.dc&&<Pt text={`Daily name "${dn}" vibrates at ${r.dc.r} (${PN[r.dc.r]}). ${gF(r.dc.r,r.b.r)==='Friendly'?'Daily name is FRIENDLY with Moolank — people calling you this name reinforces positive energy.':gF(r.dc.r,r.b.r)==='Hostile'?'Daily name CONFLICTS with Moolank — even informal use weakens your energy field.':'Daily name is neutral with Moolank.'}`} type={gF(r.dc.r,r.b.r)==='Friendly'?'pos':gF(r.dc.r,r.b.r)==='Hostile'?'neg':'info'}/>}
+        <Pt text={`Official name "${name}" vibrates at ${r.nc.r} (${PN[r.nc.r]}). ${gF(r.b.r,r.nc.r)==='Friendly'?'This name is FRIENDLY with your Moolank — it amplifies your natural energy.':gF(r.b.r,r.nc.r)==='Hostile'?'WARNING: This name CONFLICTS with your Moolank. The name you carry is working against your natural energy. Consider adjusting the spelling.':'This name is neutral with your Moolank — neither amplifying nor reducing.'}`} type={gF(r.b.r,r.nc.r)==='Friendly'?'pos':gF(r.b.r,r.nc.r)==='Hostile'?'neg':'info'}/>
+        {r.dc&&<Pt text={`Daily name "${dn}" vibrates at ${r.dc.r} (${PN[r.dc.r]}). ${gF(r.b.r,r.dc.r)==='Friendly'?'Daily name is FRIENDLY with Moolank — people calling you this name reinforces positive energy.':gF(r.b.r,r.dc.r)==='Hostile'?'Daily name CONFLICTS with Moolank — even informal use weakens your energy field.':'Daily name is neutral with Moolank.'}`} type={gF(r.b.r,r.dc.r)==='Friendly'?'pos':gF(r.b.r,r.dc.r)==='Hostile'?'neg':'info'}/>}
         {r.nc.r!==r.lp.r&&r.nc.r!==r.b.r&&<Pt text={`Name number ${r.nc.r} is different from both Moolank (${r.b.r}) and Bhagyank (${r.lp.r}). Check if ${r.nc.r} is missing from your Lo-Shu grid — if yes, this name is filling an energy gap, which is excellent.`} type="warn"/>}
         {r.grid.missing.includes(r.nc.r)&&<Pt text={`EXCELLENT: Name number ${r.nc.r} fills a MISSING slot in your Lo-Shu grid. This name is actively compensating for an energy gap in your birth chart.`} type="pos"/>}
       </Sec>
@@ -1123,7 +1128,7 @@ function PersonalReading(){
       {r.md_deep&&<Sec id="relation" title="Relationships & Compatibility Pattern" icon="<3" badge="Chaldean 8/10">
         <Pt text={r.md_deep.relation} type="info"/>
         {r.ni&&<Pt text={`Vedic Gana: ${NAK_DEEP.gana_meaning[r.ni.gana]} This temperament directly affects how you engage in relationships.`} type="info"/>}
-        <Pt text={`Numbers most compatible with Moolank ${r.b.r}: ${[1,2,3,4,5,6,7,8,9].filter(n=>gF(r.b.r,n)==='Friendly'||gF(r.b.r,n)==='Same').join(', ')}. Numbers to approach carefully: ${[1,2,3,4,5,6,7,8,9].filter(n=>gF(r.b.r,n)==='Hostile').join(', ')}.`} type="info"/>
+        <Pt text={`Lucky numbers (common to King ${r.b.r} and Queen ${r.lp.r}): ${window.Batraa.luckySet(r.b.r,r.lp.r).join(', ')||'none'}. Unlucky numbers (all enemies of King and Queen): ${window.Batraa.unluckySet(r.b.r,r.lp.r).join(', ')||'none'}. Neutral: ${[1,2,3,4,5,6,7,8,9].filter(n=>!window.Batraa.luckySet(r.b.r,r.lp.r).includes(n)&&!window.Batraa.unluckySet(r.b.r,r.lp.r).includes(n)).join(', ')}.`} type="info"/>
       </Sec>}
 
       {/* HEALTH */}
@@ -1217,7 +1222,7 @@ function BabyPlanner(){
     const birth=cB(d),lp=cL(d,m,y),dt=new Date(y,m-1,d),wd=dt.getDay();
     const bc=bn?cN(bn):null;const kuaM=cKua(y,'M');const kuaF=cKua(y,'F');
     const grid=gG(d,m,y,bc?.r,kuaM,kuaF);
-    const sugg=grid.missing.map(num=>({num,planet:PN[num],fb:gF(num,birth.r),fl:gF(num,lp.r)})).filter(s=>s.fb!=="Hostile"&&s.fl!=="Hostile");
+    const sugg=window.Batraa.recommend(grid.counts,birth.r,lp.r).numbers.map(num=>({num,planet:PN[num],fb:gF(birth.r,num),fl:gF(lp.r,num)}));
     let ni=null;if(nakI!==''&&padaN!==''){const idx=parseInt(nakI),p=parseInt(padaN);
       if(!isNaN(idx)&&!isNaN(p)&&idx>=0&&idx<27&&p>=1&&p<=4){const nk=NAK[idx];
         ni={name:nk.n,lord:nk.lord,deity:nk.deity,gana:nk.gana,rashi:nk.r[p-1],navamsha:nk.nav[p-1],letter:nk.let[p-1],pada:p,navLord:RL[nk.nav[p-1]]}}}
@@ -1350,7 +1355,7 @@ function DateCompare(){
       const g=gG(b.r,l.r,0,0),isD=b.r===l.r,h=gF(b.r,l.r);
       let sc=0;if(isD)sc+=3;if([1,2,5,6].includes(b.r))sc+=1;if([1,2,5,6].includes(l.r))sc+=1;
       if(h==='Friendly')sc+=2;if(h==='Same')sc+=3;if([19,24,23,15,21,33,42].includes(b.c))sc+=2;if([19,24,23,15,21,33,42].includes(l.c))sc+=1;
-      const wdFr=gF(WDN[wd],b.r);if(wdFr==='Friendly')sc+=1;
+      const wdFr=gF(b.r,WDN[wd]);if(wdFr==='Friendly')sc+=1;
       const ins=[];const neg=[];
       if(isD){ins.push(`Double ${b.r} — rare coherence!`)}
       if(h==='Friendly')ins.push(`Birth-LP Friendly harmony`);if(h==='Hostile')neg.push(`Birth-LP Hostile — internal conflict`);
@@ -1695,31 +1700,31 @@ function NewbornAnalysis(){
 
         {/* Best name numbers */}
         <div style={{marginBottom:10}}>
-          <div style={{color:'#059669',fontWeight:'bold',fontSize:11,marginBottom:6}}>RECOMMENDED NAME NUMBERS (fills missing grid slots + friendly)</div>
+          <div style={{color:'#059669',fontWeight:'bold',fontSize:11,marginBottom:6}}>RECOMMENDED NAME NUMBERS (missing benefic number that is not unlucky; otherwise a lucky benefic number)</div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))',gap:6}}>
-            {r.grid.missing.filter(n=>gF(n,r.birth.r)!=='Hostile'&&gF(n,r.lp.r)!=='Hostile').map(num=>(
+            {window.Batraa.recommend(r.grid.counts,r.birth.r,r.lp.r).numbers.map(num=>(
               <div key={num} style={{background:'#f8fafc',borderRadius:8,padding:10,textAlign:'center',border:'2px solid #15803d'}}>
                 <div style={{fontSize:24,fontWeight:'bold',color:PC[num]}}>{num}</div>
                 <div style={{fontSize:9,color:'#1e293b'}}>{PN[num]}</div>
-                <div style={{fontSize:8,color:'#059669',marginTop:2}}>Fills missing + Friendly</div>
+                <div style={{fontSize:8,color:'#059669',marginTop:2}}>{r.grid.missing.includes(num)?'Fills missing benefic':'Lucky benefic'}</div>
               </div>
             ))}
           </div>
-          {r.grid.missing.filter(n=>gF(n,r.birth.r)!=='Hostile'&&gF(n,r.lp.r)!=='Hostile').length===0&&
-            <p style={{color:'#64748b',fontSize:10}}>All friendly numbers already present in grid. Any harmonious name works.</p>}
+          {window.Batraa.recommend(r.grid.counts,r.birth.r,r.lp.r).numbers.length===0&&
+            <p style={{color:'#64748b',fontSize:10}}>No benefic number qualifies; choose a name total from the lucky numbers.</p>}
         </div>
 
         {/* Numbers to AVOID in name */}
         <div style={{marginBottom:10}}>
           <div style={{color:'#dc2626',fontWeight:'bold',fontSize:11,marginBottom:6}}>AVOID THESE NAME NUMBERS</div>
           <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-            {[1,2,3,4,5,6,7,8,9].filter(n=>gF(n,r.birth.r)==='Hostile'||gF(n,r.lp.r)==='Hostile').map(num=>(
+            {window.Batraa.unluckySet(r.birth.r,r.lp.r).map(num=>(
               <div key={num} style={{background:'rgba(239,68,68,0.1)',borderRadius:6,padding:'4px 10px',textAlign:'center',border:'1px solid #fecaca'}}>
                 <span style={{fontSize:14,fontWeight:'bold',color:'#dc2626'}}>{num}</span>
                 <span style={{fontSize:8,color:'#dc2626',marginLeft:4}}>{PN[num]?.split('(')[0]}</span>
               </div>
             ))}
-            {[1,2,3,4,5,6,7,8,9].filter(n=>gF(n,r.birth.r)==='Hostile'||gF(n,r.lp.r)==='Hostile').length===0&&
+            {window.Batraa.unluckySet(r.birth.r,r.lp.r).length===0&&
               <span style={{color:'#64748b',fontSize:10}}>No hostile numbers — but still prefer missing grid numbers for best results.</span>}
           </div>
         </div>
@@ -1742,7 +1747,7 @@ function NewbornAnalysis(){
           <div style={{color:'#d97706',fontWeight:'bold',fontSize:11,marginBottom:4}}>HOW TO FIND THE PERFECT NAME</div>
           <div style={{fontSize:10,color:'#1e293b',lineHeight:1.6}}>
             1. {r.ni?`Start with letter "${r.ni.letter}" (from Vedic Pada)`:'Get Nakshatra Pada from Panchang for the starting letter'}<br/>
-            2. Name total should reduce to: <b style={{color:'#059669'}}>{r.grid.missing.filter(n=>gF(n,r.birth.r)!=='Hostile'&&gF(n,r.lp.r)!=='Hostile').slice(0,3).join(' or ')}</b><br/>
+            2. Name total should reduce to: <b style={{color:'#059669'}}>{window.Batraa.recommend(r.grid.counts,r.birth.r,r.lp.r).numbers.slice(0,3).join(' or ')}</b><br/>
             3. Go to the <b style={{color:'#d97706'}}>"Names" tab</b> in this dashboard → set target number → type names to test instantly<br/>
             4. The Chaldean letter values table is available there for manual calculation
           </div>
@@ -1758,7 +1763,7 @@ function NewbornAnalysis(){
           </div>
           <div style={{marginTop:6,fontSize:10,color:r.grid.missing.includes(r.nc.r)?'#4ade80':'#fbbf24'}}>
             {r.grid.missing.includes(r.nc.r)?`Name ${r.nc.r} fills a MISSING grid number — EXCELLENT choice!`
-              :`Name ${r.nc.r} overlaps with existing grid number — consider a name at ${r.grid.missing.filter(n=>gF(n,r.birth.r)!=='Hostile').slice(0,2).join(' or ')} instead.`}
+              :`Name ${r.nc.r} overlaps with existing grid number — consider a name at ${window.Batraa.recommend(r.grid.counts,r.birth.r,r.lp.r).numbers.slice(0,2).join(' or ')} instead.`}
           </div>
           {r.nc.c>9&&<div style={{fontSize:9,color:'#64748b',marginTop:4}}>Compound {r.nc.c}: {CO[r.nc.c]||""}</div>}
         </div>}
@@ -1944,10 +1949,10 @@ function getRemedies(grid,birth,lp,nameN){
 
   if(missing.length>0){
     // Name remedy
-    const friendlyMissing=missing.filter(n=>gF(n,birth)!=='Hostile'&&gF(n,lp)!=='Hostile');
+    const friendlyMissing=window.Batraa.recommend(grid.counts,birth,lp).numbers;
     if(friendlyMissing.length>0){
       rems.push({type:'name',text:`Choose a name vibrating at ${friendlyMissing[0]} (${PN[friendlyMissing[0]]}) to fill the most important missing number. This is the PRIMARY remedy.`});
-      if(friendlyMissing.length>1)rems.push({type:'name',text:`Alternative name numbers: ${friendlyMissing.slice(1).map(n=>`${n}(${PN[n]?.split('(')[0]})`).join(', ')}. All friendly with Birth and LP.`});
+      if(friendlyMissing.length>1)rems.push({type:'name',text:`Alternative name numbers: ${friendlyMissing.slice(1).map(n=>`${n}(${PN[n]?.split('(')[0]})`).join(', ')}. All suit this King/Queen combination.`});
     }
 
     // Color remedies for missing numbers
@@ -2357,7 +2362,7 @@ function checkNadiExceptionByPada(n1,p1,n2,p2){
 function checkBhakootException(r1,r2){
   const l1=RASHI_LORD_NUM[r1],l2=RASHI_LORD_NUM[r2];
   if(!l1||!l2)return{cancelled:false,reason:''};
-  const fr=gF(l1,l2);
+  const fr=gPF(l1,l2);
   if(fr==='Friendly'||fr==='Same')return{cancelled:true,reason:`Bhakoot Dosha cancelled — Rashi lords ${RL[r1]?.split('(')[0]} and ${RL[r2]?.split('(')[0]} are ${fr}`};
   return{cancelled:false,reason:'Rashi lords are not friendly — Bhakoot Dosha applies'};
 }
@@ -2366,7 +2371,7 @@ function checkGanaException(g1,g2,r1,r2){
   // Gana Dosha partially cancelled if Venus in same sign or Moon lords friendly
   if(g1==='Rakshasa'&&g2==='Deva'||g1==='Deva'&&g2==='Rakshasa'){
     const l1=RASHI_LORD_NUM[r1],l2=RASHI_LORD_NUM[r2];
-    if(l1&&l2&&gF(l1,l2)==='Friendly')return{cancelled:true,reason:'Gana Dosha mitigated — Rashi lords are friendly (partial cancellation)'};
+    if(l1&&l2&&gPF(l1,l2)==='Friendly')return{cancelled:true,reason:'Gana Dosha mitigated — Rashi lords are friendly (partial cancellation)'};
     return{cancelled:false,reason:'Full Gana Dosha — significant temperament mismatch'};
   }
   return{cancelled:false,reason:''};
@@ -2420,7 +2425,7 @@ function calcAllKootas(nak1,pada1,nak2,pada2,rashi1,rashi2){
   const gml1=RASHI_LORD_NUM[rashi1],gml2=RASHI_LORD_NUM[rashi2];
   let gmScore=3;let gmNote='Unknown';
   if(gml1&&gml2){
-    const fr=gF(gml1,gml2);
+    const fr=gPF(gml1,gml2);
     if(fr==='Same'){gmScore=5;gmNote=`Both ruled by same planet (${RL[rashi1]?.split('(')[0]}) — strong mental bond`;}
     else if(fr==='Friendly'){gmScore=4;gmNote=`${RL[rashi1]?.split('(')[0]}+${RL[rashi2]?.split('(')[0]} = Friends — good mental compatibility`;}
     else if(fr==='Hostile'){gmScore=1;gmNote=`${RL[rashi1]?.split('(')[0]}+${RL[rashi2]?.split('(')[0]} = Enemies — mental friction`;}
@@ -2485,7 +2490,7 @@ function calcAllKootas(nak1,pada1,nak2,pada2,rashi1,rashi2){
   // ── NAVAMSHA COMPATIBILITY (Pada-based) ──
   let navCompat={score:0,note:'Enter Pada for Navamsha analysis',hasData:false};
   if(nav1&&nav2){
-    const navFr=gF(navLordNum1||0,navLordNum2||0);
+    const navFr=gPF(navLordNum1||0,navLordNum2||0);
     const isVarg1=nav1===rashi1,isVarg2=nav2===rashi2;
     let ns=0;
     if(navFr==='Same')ns=5;else if(navFr==='Friendly')ns=4;else if(navFr==='Hostile')ns=1;else ns=3;
@@ -3255,11 +3260,142 @@ function AskGuruJi(){
   </div>);
 }
 
+// ═══════ MOBILE & VEHICLE NUMBERS (Batraa method) ═══════
+const MB_CLS={good:['#dcfce7','#166534','Good'],neutral:['#f1f5f9','#334155','Neutral'],malefic:['#fee2e2','#991b1b','Malefic'],unrated:['#fef9c3','#854d0e','Not rated']};
+const MB_VERDICT={Excellent:['#dcfce7','#166534'],Good:['#e0f2fe','#075985'],Acceptable:['#fef9c3','#854d0e'],'Change recommended':['#fee2e2','#991b1b']};
+
+function MbNumberCard({a,title}){
+  const [vb,vf]=MB_VERDICT[a.verdict]||MB_VERDICT.Acceptable;
+  return(<div style={{...CS,marginBottom:12}}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:8}}>
+      <div><div style={AG_SMALL}>{title}</div><div style={{fontSize:20,fontWeight:800,letterSpacing:1,color:'#0f172a'}}>{a.number}</div></div>
+      <span style={{...AG_BADGE(vb,vf),fontSize:13,padding:'4px 12px'}}>{a.verdict}</span>
+    </div>
+    <p style={AG_P}><b>Total:</b> {a.compound} → {a.total}{a.relation?` (${a.relation} for this person)`:''}. {a.totalTrait&&<span>A total of {a.total} brings {a.totalTrait}.</span>}</p>
+    <div style={{fontSize:13,fontWeight:700,color:'#334155',margin:'8px 0 4px'}}>Two-digit pairs (zeros removed, repeats counted once)</div>
+    <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
+      {a.pairs.map(p=>{const [bg,fg,lb]=MB_CLS[p.cls];return(<span key={p.pair} title={p.note||''} style={{background:bg,color:fg,borderRadius:8,padding:'4px 8px',fontSize:13,fontWeight:700}}>{p.pair} <span style={{fontWeight:500,fontSize:11}}>{lb}</span></span>);})}
+    </div>
+    {a.issues.length>0&&<div style={{marginBottom:6}}>{a.issues.map((x,i)=><p key={i} style={{...AG_P,color:'#991b1b'}}>✗ {x}</p>)}</div>}
+    {a.positives.length>0&&<div>{a.positives.map((x,i)=><p key={i} style={{...AG_P,color:'#166534'}}>✓ {x}</p>)}</div>}
+    {a.triples.filter(t=>t.seq!=='000'&&t.seq!=='777').map(t=><p key={t.seq} style={{...AG_P,color:'#9a3412'}}>• Contains {t.seq}{t.note?`: ${t.note}`:''}.</p>)}
+    {a.pairs.some(p=>p.cls==='unrated')&&<p style={AG_SMALL}>Pairs of the same digit (other than 11) have no rating in this method.</p>}
+  </div>);
+}
+
+function MobileNumbers(){
+  const B=window.Batraa;
+  const [name,sName]=useState(()=>agLoad('mb_name',''));
+  const [d,sD]=useState(()=>agLoad('mb_d',''));
+  const [m,sM]=useState(()=>agLoad('mb_m',''));
+  const [y,sY]=useState(()=>agLoad('mb_y',''));
+  const [cur,sCur]=useState(()=>agLoad('mb_cur',''));
+  const [list,sList]=useState(()=>agLoad('mb_list',''));
+  const [len,sLen]=useState(()=>agLoad('mb_len','4'));
+  const [res,sRes]=useState(null);
+  const [err,sErr]=useState('');
+  useEffect(()=>{agSave('mb_name',name);agSave('mb_d',d);agSave('mb_m',m);agSave('mb_y',y);agSave('mb_cur',cur);agSave('mb_list',list);agSave('mb_len',len);},[name,d,m,y,cur,list,len]);
+  if(!B)return(<div style={CS}><p style={AG_P}>The numerology rules could not load. Refresh the page.</p></div>);
+
+  function run(){
+    sErr('');
+    if(!d||!m||!y){sErr('Please enter the full date of birth.');return;}
+    const p=B.person(parseInt(d),parseInt(m),parseInt(y));
+    const current=cur.replace(/\D/g,'').length>=2?B.analyzeNumber(cur,p):null;
+    const cands=(list.match(/\d{2,}/g)||[]).filter((x,i,a)=>a.indexOf(x)===i).slice(0,400);
+    const ranked=cands.map(n=>B.analyzeNumber(n,p)).map(a=>{
+      const mal=a.pairs.filter(x=>x.cls==='malefic').length,good=a.pairs.filter(x=>x.cls==='good').length;
+      const rec=p.recommend.numbers.includes(a.total),pref=(B.TOTAL_COMPOUNDS[a.total]||[]).includes(a.compound);
+      const excess=(p.grid.counts[a.total]||0)>=2;
+      const score=(mal?-100:0)+(a.relation==='unlucky'?-50:0)+(excess?-20:0)+(rec?20:a.relation==='lucky'?10:0)+(pref?5:0)+good*2-(a.triples.length?3:0);
+      return{...a,score,mal,good,rec};
+    }).sort((x,y)=>y.score-x.score);
+    const n=Math.max(2,Math.min(4,parseInt(len)||4));
+    sRes({p,current,ranked,sugg:B.suggest(p,{length:n,limit:24}),len:n});
+    setTimeout(()=>{const el=document.getElementById('mobile-results');if(el)el.scrollIntoView({behavior:'smooth'});},50);
+  }
+
+  const lbl={fontSize:12,color:'#475569',display:'block',marginBottom:4,fontWeight:600};
+  const inp={...IS,fontSize:14,padding:'10px 12px'};
+  const P=res&&res.p;
+  const chip=(n,bg,fg)=><span key={n} style={{display:'inline-block',minWidth:30,textAlign:'center',background:bg,color:fg,borderRadius:8,padding:'4px 8px',fontSize:15,fontWeight:800,margin:'0 4px 4px 0'}}>{n}</span>;
+
+  return(<div>
+    <div style={{...CS,marginBottom:14}}>
+      <h2 style={{fontSize:20,fontWeight:800,color:'#92400e',margin:'0 0 4px'}}>Mobile & Vehicle Numbers</h2>
+      <p style={{...AG_SMALL,margin:'0 0 14px'}}>Checks a phone or vehicle number against the owner's birth grid: King and Queen numbers, lucky and unlucky numbers, every two-digit pair inside the number, and the total. It then recommends the total to aim for and ranks the numbers you can choose from.</p>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
+        <div><label style={lbl}>Owner's name (optional)</label><input style={inp} value={name} onChange={e=>sName(e.target.value)} placeholder="Name"/></div>
+        <div><label style={lbl}>Owner's date of birth</label><DateDropdowns day={d} setDay={sD} month={m} setMonth={sM} year={y} setYear={sY} yearStart={1930} yearEnd={new Date().getFullYear()}/></div>
+        <div><label style={lbl}>Current mobile or vehicle number</label><input style={inp} value={cur} onChange={e=>sCur(e.target.value)} placeholder="e.g. 9812345678" inputMode="numeric"/></div>
+      </div>
+      <div style={{marginTop:12}}>
+        <label style={lbl}>Numbers you can choose from (optional): paste any list</label>
+        <textarea style={{...inp,minHeight:64,fontFamily:'inherit'}} value={list} onChange={e=>sList(e.target.value)} placeholder="e.g. 1220 1221 1223 1225 1227 1231 1257 … or new SIM numbers"/>
+      </div>
+      <div style={{display:'flex',gap:12,alignItems:'end',flexWrap:'wrap',marginTop:12}}>
+        <div><label style={lbl}>Suggest numbers with this many digits</label>
+          <select style={{...SS,fontSize:14,padding:'10px 12px',width:120}} value={len} onChange={e=>sLen(e.target.value)}><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
+      </div>
+      {err&&<p style={{color:'#b91c1c',fontSize:13,marginTop:10}}>{err}</p>}
+      <button style={{...BS,marginTop:14,fontSize:15}} onClick={run}>Analyse numbers</button>
+    </div>
+
+    {res&&<div id="mobile-results">
+      <div style={{...CS,marginBottom:12}}>
+        <h3 style={AG_H}>{name?name+"'s":'Owner’s'} number profile</h3>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:14,alignItems:'start'}}>
+          <Grid day={parseInt(d)} month={parseInt(m)} year={parseInt(y)} nameNum={0} kuaM={0} kuaF={0} title="Lo Shu birth grid"/>
+          <div>
+            <p style={AG_P}><b>King (Moolank):</b> {P.K} &nbsp; <b>Queen (Bhagyank):</b> {P.Q}</p>
+            {P.grid.kingOnce&&<p style={AG_SMALL}>Born on the {parseInt(d)}: the date digit is already the King, so it is placed once.</p>}
+            <div style={{margin:'8px 0'}}><div style={AG_SMALL}>Lucky numbers (common to King and Queen)</div>{P.lucky.length?P.lucky.map(n=>chip(n,'#dcfce7','#166534')):<span style={AG_P}>none</span>}</div>
+            <div style={{margin:'8px 0'}}><div style={AG_SMALL}>Unlucky numbers (all enemies of King and Queen)</div>{P.unlucky.length?P.unlucky.map(n=>chip(n,'#fee2e2','#991b1b')):<span style={AG_P}>none</span>}</div>
+            <div style={{margin:'8px 0'}}><div style={AG_SMALL}>Neutral numbers</div>{P.neutral.map(n=>chip(n,'#f1f5f9','#334155'))}</div>
+            <p style={AG_P}><b>Missing from grid:</b> {P.missing.join(', ')||'none'} &nbsp; <b>Missing benefic:</b> {P.missingBenefic.join(', ')||'none'} &nbsp; <b>Lucky benefic:</b> {P.luckyBenefic.join(', ')||'none'}</p>
+            {P.multiples.length>0&&<div>{P.multiples.map(x=><p key={x.number} style={AG_P}>• {x.number} appears {x.count} times: {x.rating}{x.trait?` (${x.trait})`:''}.</p>)}</div>}
+          </div>
+        </div>
+      </div>
+
+      <div style={{...CS,marginBottom:12,borderLeft:'4px solid #16a34a'}}>
+        <h3 style={AG_H}>Recommended total</h3>
+        {P.recommend.numbers.length?<>
+          <div style={{marginBottom:6}}>{P.recommend.numbers.map(n=>chip(n,'#16a34a','#fff'))}</div>
+          <p style={AG_P}>{P.recommend.rule}</p>
+          {P.recommend.compounds.map(c=><p key={c.number} style={AG_P}><b>{c.number}</b>{B.CONCEPT[c.number]?` strengthens ${B.CONCEPT[c.number]}`:''}.{c.compounds.length?` Preferred digit sums, best first: ${c.compounds.join(' > ')}.`:''}</p>)}
+        </>:<p style={AG_P}>No benefic number qualifies for this birth date. Choose a total from the lucky numbers and keep every pair clean.</p>}
+        {P.recommend.avoidTriple.length>0&&<p style={{...AG_P,color:'#9a3412'}}>Avoid totals of {P.recommend.avoidTriple.join(', ')}: already repeated in the grid.</p>}
+        <p style={AG_SMALL}>Whatever the total, the new number must not contain a malefic pair.</p>
+      </div>
+
+      {res.current&&<MbNumberCard a={res.current} title="Current number"/>}
+
+      {res.ranked.length>0&&<div style={{...CS,marginBottom:12}}>
+        <h3 style={AG_H}>Your available numbers, ranked</h3>
+        <AgTable head={['Number','Total','Pairs','Verdict']} rows={res.ranked.slice(0,60).map(a=>[<b>{a.number}</b>,`${a.compound} → ${a.total}${a.rec?' ★':''}`,
+          <span>{a.pairs.map(p=><span key={p.pair} style={{color:MB_CLS[p.cls][1],marginRight:6,fontWeight:p.cls==='malefic'?800:500}}>{p.pair}</span>)}</span>,
+          <span style={AG_BADGE(...(MB_VERDICT[a.verdict]||MB_VERDICT.Acceptable))}>{a.verdict}</span>])}/>
+        <p style={{...AG_SMALL,marginTop:6}}>★ = recommended total. Red pairs are malefic.</p>
+      </div>}
+
+      <div style={{...CS,marginBottom:12}}>
+        <h3 style={AG_H}>Clean {res.len}-digit numbers for this person</h3>
+        {res.sugg.length?<div style={{display:'flex',flexWrap:'wrap',gap:6}}>{res.sugg.map(x=><span key={x.number} style={{border:'1px solid #bbf7d0',background:'#f0fdf4',borderRadius:8,padding:'6px 10px',fontSize:15,fontWeight:700}}>{x.number} <span style={{fontSize:11,color:'#64748b',fontWeight:500}}>{x.compound}→{x.total}</span></span>)}</div>
+          :<p style={AG_P}>No {res.len}-digit number reaches the recommended total with only good or neutral pairs. Try another length.</p>}
+        <p style={{...AG_SMALL,marginTop:6}}>Each one reaches the recommended total, has only good or neutral pairs, and has no digit three times in a row. For a mobile number, use the last digits you can choose. For a vehicle, the same rules are applied to the registration digits.</p>
+      </div>
+      <PDFBtn targetId="mobile-results" filename={`${name||'Number'}_Mobile_Analysis.pdf`}/>
+    </div>}
+  </div>);
+}
+
 function App(){
   const [tab,sT]=useState('ask');
   const tabs=[
     {id:'ask',label:'Ask Guru Ji',icon:'?'},
     {id:'personal',label:'Personal',icon:'*'},
+    {id:'mobile',label:'Mobile & Vehicle No.',icon:'#'},
     {id:'baby',label:'Baby Planner',icon:'bb'},
     {id:'newborn',label:'Newborn',icon:'*'},
     {id:'compare',label:'Compare',icon:'='},
@@ -3277,9 +3413,9 @@ function App(){
       <div style={{display:'flex',borderBottom:'1px solid #e2e8f0',marginTop:4,overflowX:'auto',background:'#f8fafc'}}>
         {tabs.map(t=><button key={t.id} onClick={()=>sT(t.id)} style={{flexShrink:0,padding:'10px 14px',fontSize:12,fontWeight:500,border:'none',background:'none',cursor:'pointer',borderBottom:tab===t.id?'3px solid #d97706':'3px solid transparent',color:tab===t.id?'#d97706':'#64748b',whiteSpace:'nowrap'}}>{t.icon} {t.label}</button>)}</div></div>
     <div style={{maxWidth:920,margin:'0 auto',padding:'16px'}}>
-      {tab==='ask'&&<AskGuruJi/>}{tab==='personal'&&<PersonalReading/>}{tab==='baby'&&<BabyPlanner/>}{tab==='newborn'&&<NewbornAnalysis/>}{tab==='compare'&&<DateCompare/>}{tab==='names'&&<NameFinder/>}{tab==='muhurat'&&<EventMuhurat/>}{tab==='marriage'&&<MarriageCompat/>}</div>
+      {tab==='ask'&&<AskGuruJi/>}{tab==='personal'&&<PersonalReading/>}{tab==='mobile'&&<MobileNumbers/>}{tab==='baby'&&<BabyPlanner/>}{tab==='newborn'&&<NewbornAnalysis/>}{tab==='compare'&&<DateCompare/>}{tab==='names'&&<NameFinder/>}{tab==='muhurat'&&<EventMuhurat/>}{tab==='marriage'&&<MarriageCompat/>}</div>
     <div style={{textAlign:'center',padding:16,color:'#94a3b8',fontSize:8,borderTop:'1px solid #111827',marginTop:20}}>
-      Guru Ji AstroPalm V6 | 8 Tabs | Chaldean+Kua: 10/10 | Vedic: verify Nakshatra from Panchang | Marriage: 8.5/10 | Muhurat: 7/10</div>
+      Guru Ji AstroPalm V6 | 9 Tabs | Chaldean+Kua: 10/10 | Vedic: verify Nakshatra from Panchang | Marriage: 8.5/10 | Muhurat: 7/10</div>
   </div>);
 }
 
