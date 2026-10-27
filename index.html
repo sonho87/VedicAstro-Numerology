@@ -19,6 +19,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
+<script src="timing-engine.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#f1f5f9;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;-webkit-font-smoothing:antialiased;}
@@ -2905,9 +2907,358 @@ function MarriageCompat(){
   </div>);
 }
 
+// ═══════ ASK GURU JI — chart, dasha, transits and timing ═══════
+// Indian cities use automatic IST (including 1942–45 War Time); others carry a fixed offset.
+const AG_CITIES=[
+  ['Bengaluru',12.9716,77.5946],['Mysuru',12.2958,76.6394],['Mangaluru',12.9141,74.856],['Hubballi-Dharwad',15.3647,75.124],
+  ['Belagavi',15.8497,74.4977],['Kalaburagi',17.3297,76.8343],['Davanagere',14.4644,75.9218],['Shivamogga',13.9299,75.5681],
+  ['Tumakuru',13.3392,77.1017],['Udupi',13.3409,74.7421],['Hassan',13.0072,76.0962],['Ballari',15.1394,76.9214],
+  ['Vijayapura',16.8302,75.71],['Chikkamagaluru',13.3153,75.7754],['Mandya',12.5218,76.8951],['Kolar',13.1362,78.1291],
+  ['Chennai',13.0827,80.2707],['Hyderabad',17.385,78.4867],['Mumbai',19.076,72.8777],['Delhi',28.6139,77.209],
+  ['Kolkata',22.5726,88.3639],['Pune',18.5204,73.8567],['Ahmedabad',23.0225,72.5714],['Jaipur',26.9124,75.7873],
+  ['Lucknow',26.8467,80.9462],['Kochi',9.9312,76.2673],['Thiruvananthapuram',8.5241,76.9366],['Kozhikode',11.2588,75.7804],
+  ['Coimbatore',11.0168,76.9558],['Madurai',9.9252,78.1198],['Tiruchirappalli',10.7905,78.7047],['Puducherry',11.9416,79.8083],
+  ['Visakhapatnam',17.6868,83.2185],['Vijayawada',16.5062,80.648],['Tirupati',13.6288,79.4192],['Bhubaneswar',20.2961,85.8245],
+  ['Patna',25.5941,85.1376],['Varanasi',25.3176,82.9739],['Chandigarh',30.7333,76.7794],['Indore',22.7196,75.8577],
+  ['Bhopal',23.2599,77.4126],['Nagpur',21.1458,79.0882],['Panaji (Goa)',15.4909,73.8278],['Guwahati',26.1445,91.7362],
+  ['Surat',21.1702,72.8311],['Nashik',19.9975,73.7898],['Kanpur',26.4499,80.3319],['Amritsar',31.634,74.8723],
+  ['Dubai',25.2048,55.2708,4],['Abu Dhabi',24.4539,54.3773,4],['Doha',25.2854,51.531,3],['Muscat',23.588,58.3829,4],
+  ['Riyadh',24.7136,46.6753,3],['Singapore',1.3521,103.8198,8],['Kuala Lumpur',3.139,101.6869,8],['Colombo',6.9271,79.8612,5.5],
+  ['Kathmandu',27.7172,85.324,5.75],['London (GMT; add 1 in summer)',51.5074,-0.1278,0],['New York (EST; add 1 in summer)',40.7128,-74.006,-5],
+  ['San Francisco (PST; add 1 in summer)',37.7749,-122.4194,-8],['Toronto (EST; add 1 in summer)',43.6532,-79.3832,-5],
+  ['Sydney (AEST; add 1 in summer)',-33.8688,151.2093,10],['Melbourne (AEST; add 1 in summer)',-37.8136,144.9631,10]
+];
+const AG_ABBR={Sun:'Su',Moon:'Mo',Mars:'Ma',Mercury:'Me',Jupiter:'Ju',Venus:'Ve',Saturn:'Sa',Rahu:'Ra',Ketu:'Ke'};
+const AG_QUICK=['When will I get married?','When will I get a new job?','Can I go abroad? What are my chances?',
+  'Is there trouble in my health right now?','Why am I facing hardships now?','When will my money situation improve?',
+  'When can I buy a house or property?','Why am I in two minds about my decisions?','When will we have a child?','Will I win my court case?'];
+const AG_H={fontSize:16,fontWeight:700,color:'#92400e',margin:'0 0 10px'};
+const AG_P={fontSize:13,lineHeight:1.6,color:'#1e293b',margin:'0 0 6px'};
+const AG_SMALL={fontSize:12,color:'#64748b',lineHeight:1.5};
+const AG_TH={textAlign:'left',padding:'6px 8px',fontSize:12,color:'#64748b',borderBottom:'1px solid #e2e8f0',whiteSpace:'nowrap'};
+const AG_TD={padding:'6px 8px',fontSize:13,color:'#0f172a',borderBottom:'1px solid #f1f5f9',verticalAlign:'top'};
+const AG_BADGE=(bg,fg)=>({display:'inline-block',padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,background:bg,color:fg});
+const AG_LEVEL={Strong:['#dcfce7','#166534'],Moderate:['#fef9c3','#854d0e'],Mixed:['#ffedd5','#9a3412'],Challenged:['#fee2e2','#991b1b'],Good:['#e0f2fe','#075985']};
+
+function agLoad(k,d){try{const v=localStorage.getItem(k);return v===null?d:v;}catch(e){return d;}}
+function agSave(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+
+// South Indian chart: signs are fixed, the ascendant is marked.
+function AgChart({title,places,lagnaSign}){
+  const POS={11:[0,0],0:[0,1],1:[0,2],2:[0,3],10:[1,0],3:[1,3],9:[2,0],4:[2,3],8:[3,0],7:[3,1],6:[3,2],5:[3,3]};
+  const TE=window.TimingEngine;
+  const cells=[];
+  for(let s=0;s<12;s++){
+    const [r,c]=POS[s];
+    cells.push(<div key={s} style={{gridRow:r+1,gridColumn:c+1,border:'1px solid #d6b98c',background:s===lagnaSign?'#fff7ed':'#fffdf8',padding:4,minHeight:68,display:'flex',flexDirection:'column'}}>
+      <div style={{fontSize:10,color:'#a16207'}}>{TE.SIGNS[s]}</div>
+      {s===lagnaSign&&<div style={{fontSize:11,fontWeight:800,color:'#b91c1c'}}>Asc</div>}
+      <div style={{fontSize:12,fontWeight:700,color:'#0f172a',lineHeight:1.35}}>{(places[s]||[]).join(' ')}</div>
+    </div>);
+  }
+  return(<div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gridTemplateRows:'repeat(4,auto)',maxWidth:420,margin:'0 auto'}}>
+      {cells}
+      <div style={{gridRow:'2 / 4',gridColumn:'2 / 4',display:'flex',alignItems:'center',justifyContent:'center',textAlign:'center',border:'1px solid #d6b98c',background:'#fef3c7',padding:6,whiteSpace:'pre-line'}}>
+        <div style={{fontSize:13,fontWeight:700,color:'#92400e'}}>{title}</div>
+      </div>
+    </div>
+  </div>);
+}
+
+function AgTable({head,rows}){
+  return(<div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}>
+    <thead><tr>{head.map((h,i)=><th key={i} style={AG_TH}>{h}</th>)}</tr></thead>
+    <tbody>{rows.map((r,i)=><tr key={i}>{r.map((c,j)=><td key={j} style={AG_TD}>{c}</td>)}</tr>)}</tbody>
+  </table></div>);
+}
+
+function AgRemedies({list}){
+  if(!list||!list.length)return null;
+  return(<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:10}}>
+    {list.map((r,i)=><div key={i} style={{border:'1px solid #fde68a',background:'#fffbeb',borderRadius:10,padding:12}}>
+      <div style={{fontSize:14,fontWeight:700,color:'#92400e',marginBottom:4}}>{r.planet}</div>
+      <div style={{...AG_SMALL,marginBottom:6}}>{r.reason}</div>
+      <div style={AG_P}><b>Mantra:</b> {r.mantra}</div>
+      <div style={AG_P}><b>Worship:</b> {r.worship}</div>
+      <div style={AG_P}><b>Charity:</b> {r.charity}</div>
+      <div style={AG_P}><b>Conduct:</b> {r.conduct}</div>
+    </div>)}
+  </div>);
+}
+
+function AgTopic({t,fmt}){
+  const [bg,fg]=AG_LEVEL[t.promise.level]||AG_LEVEL.Mixed;
+  return(<div style={{...CS,marginBottom:12,borderLeft:'4px solid #d97706'}}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}}>
+      <h3 style={{...AG_H,margin:0}}>{t.label}</h3>
+      <span style={AG_BADGE(bg,fg)}>Birth-chart promise: {t.promise.level}</span>
+    </div>
+    <p style={{fontSize:15,lineHeight:1.6,color:'#0f172a',fontWeight:600,margin:'0 0 12px'}}>{t.verdict}</p>
+
+    <div style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,color:'#334155',marginBottom:4}}>What your running dasha says</div>
+      <p style={AG_P}><b>{t.now.md}</b> (major period): {t.now.mdLinks.length?t.now.mdLinks.join('; ')+'.':'not directly connected to this matter.'}</p>
+      <p style={AG_P}><b>{t.now.ad}</b> (sub-period): {t.now.adLinks.length?t.now.adLinks.join('; ')+'.':'not directly connected to this matter.'}</p>
+    </div>
+
+    {t.windows.length>0&&<div style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,color:'#334155',marginBottom:4}}>Supportive periods (dasha + transit agree)</div>
+      <AgTable head={['From','To','Strength','Dasha','Why']} rows={t.windows.map(w=>[fmt(w.start),fmt(w.end),
+        <span style={AG_BADGE(...(AG_LEVEL[w.strength]||AG_LEVEL.Moderate))}>{w.strength}</span>,w.dasha,w.reasons.join(' ')])}/>
+    </div>}
+    {t.risk.length>0&&<div style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,color:'#991b1b',marginBottom:4}}>Health-sensitive periods (take extra care)</div>
+      <AgTable head={['From','To','Dasha','Why']} rows={t.risk.map(w=>[fmt(w.start),fmt(w.end),w.ad,w.why.join(' ')])}/>
+    </div>}
+
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:10,marginBottom:12}}>
+      <div><div style={{fontSize:13,fontWeight:700,color:'#166534',marginBottom:4}}>Supporting factors in the birth chart</div>
+        {t.promise.positives.length?t.promise.positives.map((x,i)=><p key={i} style={AG_P}>✓ {x}</p>):<p style={AG_SMALL}>None significant.</p>}</div>
+      <div><div style={{fontSize:13,fontWeight:700,color:'#991b1b',marginBottom:4}}>Obstacles in the birth chart</div>
+        {t.promise.negatives.length?t.promise.negatives.map((x,i)=><p key={i} style={AG_P}>✗ {x}</p>):<p style={AG_SMALL}>None significant.</p>}</div>
+    </div>
+    {t.promise.notes.length>0&&<div style={{marginBottom:12}}>{t.promise.notes.map((x,i)=><p key={i} style={{...AG_P,fontStyle:'italic'}}>• {x}</p>)}</div>}
+
+    <div style={{fontSize:13,fontWeight:700,color:'#334155',marginBottom:6}}>Remedies for this</div>
+    <AgRemedies list={t.remedies}/>
+  </div>);
+}
+
+function AskGuruJi(){
+  const TE=window.TimingEngine;
+  const [name,sName]=useState(()=>agLoad('ag_name',''));
+  const [gender,sGender]=useState(()=>agLoad('ag_gender','M'));
+  const [d,sD]=useState(()=>agLoad('ag_d',''));
+  const [m,sM]=useState(()=>agLoad('ag_m',''));
+  const [y,sY]=useState(()=>agLoad('ag_y',''));
+  const [hh,sHh]=useState(()=>agLoad('ag_hh',''));
+  const [mi,sMi]=useState(()=>agLoad('ag_mi',''));
+  const [ap,sAp]=useState(()=>agLoad('ag_ap','AM'));
+  const [noTime,sNoTime]=useState(()=>agLoad('ag_nt','0')==='1');
+  const [city,sCity]=useState(()=>agLoad('ag_city','Bengaluru'));
+  const [lat,sLat]=useState(()=>agLoad('ag_lat',''));
+  const [lon,sLon]=useState(()=>agLoad('ag_lon',''));
+  const [tz,sTz]=useState(()=>agLoad('ag_tz','5.5'));
+  const [q,sQ]=useState(()=>agLoad('ag_q',''));
+  const [R,sR]=useState(null);
+  const [A,sA]=useState(null);
+  const [err,sErr]=useState('');
+  const [busy,sBusy]=useState(false);
+  const [follow,sFollow]=useState('');
+  useEffect(()=>{agSave('ag_name',name);agSave('ag_gender',gender);agSave('ag_d',d);agSave('ag_m',m);agSave('ag_y',y);
+    agSave('ag_hh',hh);agSave('ag_mi',mi);agSave('ag_ap',ap);agSave('ag_nt',noTime?'1':'0');agSave('ag_city',city);
+    agSave('ag_lat',lat);agSave('ag_lon',lon);agSave('ag_tz',tz);agSave('ag_q',q);},[name,gender,d,m,y,hh,mi,ap,noTime,city,lat,lon,tz,q]);
+
+  if(!TE||!window.Astronomy){
+    return(<div style={CS}><p style={AG_P}>The astronomy engine could not load. Check your internet connection and refresh the page.</p></div>);
+  }
+  const fmt=dt=>TE.fmtDate(dt);
+
+  function run(question){
+    sErr('');
+    if(!d||!m||!y){sErr('Please enter the full date of birth.');return;}
+    if(!noTime&&(hh===''||mi==='')){sErr('Please enter the birth time, or tick "Birth time not known".');return;}
+    let place;
+    if(city==='__other'){
+      const la=parseFloat(lat),lo=parseFloat(lon),z=parseFloat(tz);
+      if(isNaN(la)||isNaN(lo)||isNaN(z)){sErr('For another place, enter latitude, longitude and time zone (hours from GMT, e.g. 5.5 for India).');return;}
+      place={lat:la,lon:lo,tz:z,india:false,label:'Lat '+la+', Lon '+lo+', GMT'+(z>=0?'+':'')+z};
+    }else{
+      const c=AG_CITIES.find(x=>x[0]===city)||AG_CITIES[0];
+      place=c.length>3?{lat:c[1],lon:c[2],tz:c[3],india:false,label:c[0]}:{lat:c[1],lon:c[2],tz:'',label:c[0]};
+    }
+    let H=noTime?12:parseInt(hh)%12+(ap==='PM'?12:0); const MI=noTime?0:parseInt(mi);
+    const input={year:parseInt(y),month:parseInt(m),day:parseInt(d),hour:H,minute:MI,lat:place.lat,lon:place.lon,tz:place.tz,india:place.india,gender,name,place:place.label,noTime};
+    sBusy(true);
+    setTimeout(()=>{
+      try{
+        const res=TE.analyze(input,{date:new Date()});
+        const ans=res.answer(question||q||'What is going on in my life right now?');
+        sR(res);sA(ans);
+        setTimeout(()=>{const el=document.getElementById('askguru-results');if(el)el.scrollIntoView({behavior:'smooth'});},50);
+      }catch(e){sErr('Could not compute the chart: '+e.message);}
+      sBusy(false);
+    },30);
+  }
+  function askFollow(text){
+    const t=(text||follow).trim(); if(!t||!R)return;
+    sA(R.answer(t)); sFollow('');
+    setTimeout(()=>{const el=document.getElementById('askguru-answer');if(el)el.scrollIntoView({behavior:'smooth'});},50);
+  }
+
+  const lbl={fontSize:12,color:'#475569',display:'block',marginBottom:4,fontWeight:600};
+  const inp={...IS,fontSize:14,padding:'10px 12px'};
+  const sel={...SS,fontSize:14,padding:'10px 12px'};
+
+  let natalPlaces={},transitPlaces={};
+  if(R){
+    TE.PLANETS.forEach(p=>{const pl=R.chart.planets[p];(natalPlaces[pl.sign]=natalPlaces[pl.sign]||[]).push(AG_ABBR[p]+(pl.retro&&p!=='Rahu'&&p!=='Ketu'?'(R)':''));});
+    Object.entries(R.transits.planets).forEach(([p,t])=>{(transitPlaces[t.sign]=transitPlaces[t.sign]||[]).push(AG_ABBR[p]);});
+  }
+  const C=R&&R.chart, P=R&&R.period;
+
+  return(<div>
+    {/* ─── Intake ─── */}
+    <div style={{...CS,marginBottom:14}}>
+      <h2 style={{fontSize:20,fontWeight:800,color:'#92400e',margin:'0 0 4px'}}>Ask Guru Ji</h2>
+      <p style={{...AG_SMALL,margin:'0 0 14px'}}>Enter the birth details of the person the question is about. Guru Ji casts the birth chart, reads the running dasha and today's planetary positions, and answers from them, showing every planetary reason.</p>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
+        <div><label style={lbl}>Name</label><input style={inp} value={name} onChange={e=>sName(e.target.value)} placeholder="Full name"/></div>
+        <div><label style={lbl}>Gender</label><select style={sel} value={gender} onChange={e=>sGender(e.target.value)}><option value="M">Male</option><option value="F">Female</option></select></div>
+        <div><label style={lbl}>Date of birth</label><DateDropdowns day={d} setDay={sD} month={m} setMonth={sM} year={y} setYear={sY} yearStart={1930} yearEnd={new Date().getFullYear()}/></div>
+        <div><label style={lbl}>Time of birth</label>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:4}}>
+            <select style={sel} value={hh} disabled={noTime} onChange={e=>sHh(e.target.value)}><option value="">Hr</option>{Array.from({length:12},(_,i)=>i+1).map(h=><option key={h} value={h}>{h}</option>)}</select>
+            <select style={sel} value={mi} disabled={noTime} onChange={e=>sMi(e.target.value)}><option value="">Min</option>{Array.from({length:60},(_,i)=>i).map(x=><option key={x} value={x}>{String(x).padStart(2,'0')}</option>)}</select>
+            <select style={sel} value={ap} disabled={noTime} onChange={e=>sAp(e.target.value)}><option>AM</option><option>PM</option></select>
+          </div>
+          <label style={{...AG_SMALL,display:'flex',gap:6,alignItems:'center',marginTop:6}}><input type="checkbox" checked={noTime} onChange={e=>sNoTime(e.target.checked)}/> Birth time not known</label>
+        </div>
+        <div><label style={lbl}>Place of birth</label>
+          <select style={sel} value={city} onChange={e=>sCity(e.target.value)}>
+            {AG_CITIES.map(c=><option key={c[0]} value={c[0]}>{c[0]}</option>)}
+            <option value="__other">Other place (enter coordinates)</option>
+          </select>
+        </div>
+        {city==='__other'&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:4}}>
+          <div><label style={lbl}>Latitude</label><input style={inp} value={lat} onChange={e=>sLat(e.target.value)} placeholder="12.97"/></div>
+          <div><label style={lbl}>Longitude</label><input style={inp} value={lon} onChange={e=>sLon(e.target.value)} placeholder="77.59"/></div>
+          <div><label style={lbl}>GMT offset</label><input style={inp} value={tz} onChange={e=>sTz(e.target.value)} placeholder="5.5"/></div>
+        </div>}
+      </div>
+      <div style={{marginTop:14}}>
+        <label style={lbl}>Your question</label>
+        <textarea style={{...inp,minHeight:70,fontFamily:'inherit',resize:'vertical'}} value={q} onChange={e=>sQ(e.target.value)} placeholder="e.g. Why did he lose his job, and when will he get a new one? Can he go abroad?"/>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:8}}>
+          {AG_QUICK.map(x=><button key={x} onClick={()=>sQ(x)} style={{border:'1px solid #fcd34d',background:q===x?'#fef3c7':'#fff',color:'#92400e',borderRadius:999,padding:'6px 10px',fontSize:12,cursor:'pointer'}}>{x}</button>)}
+        </div>
+      </div>
+      {err&&<p style={{color:'#b91c1c',fontSize:13,marginTop:10}}>{err}</p>}
+      <button style={{...BS,marginTop:14,fontSize:15}} onClick={()=>run()} disabled={busy}>{busy?'Casting the chart…':'Ask Guru Ji'}</button>
+    </div>
+
+    {R&&A&&<div id="askguru-results">
+      {/* ─── Header ─── */}
+      <div style={{...CS,marginBottom:12,background:'linear-gradient(135deg,#fffbeb,#fff)'}}>
+        <h2 style={{fontSize:18,fontWeight:800,color:'#92400e',margin:'0 0 6px'}}>Guru Ji's reading{C.input.name?' for '+C.input.name:''}</h2>
+        <p style={AG_SMALL}>Born {fmt(new Date(Date.UTC(C.input.year,C.input.month-1,C.input.day)))}{C.input.noTime?' (time not known)':', '+String(C.input.hour).padStart(2,'0')+':'+String(C.input.minute).padStart(2,'0')} · {C.input.place} · Reading prepared {fmt(R.now)}</p>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:8,marginTop:10}}>
+          {[['Lagna (ascendant)',C.input.noTime?'Unknown':C.lagna.signName+' '+TE.fmtDeg(C.lagna.deg)],['Rashi (Moon sign)',C.rashi],['Nakshatra',C.nakshatra+' pada '+C.pada],
+            ['Running dasha',P.md.lord+' – '+P.ad.lord+(P.pd?' – '+P.pd.lord:'')]].map(([k,v])=>
+            <div key={k} style={{background:'#fff',border:'1px solid #fde68a',borderRadius:10,padding:10}}>
+              <div style={AG_SMALL}>{k}</div><div style={{fontSize:15,fontWeight:700,color:'#0f172a'}}>{v}</div></div>)}
+        </div>
+        {C.input.noTime&&<p style={{...AG_P,color:'#9a3412',marginTop:10}}>Birth time is not known, so the ascendant and houses are unreliable. Answers lean on the Moon sign, dasha and transits. The Moon itself can change sign within a day, so get the exact time if at all possible.</p>}
+        {!C.input.noTime&&C.cuspWarning&&<p style={{...AG_P,color:'#9a3412',marginTop:10}}>⚠ {C.cuspWarning}</p>}
+      </div>
+
+      {/* ─── Answer ─── */}
+      <div id="askguru-answer" style={{marginBottom:6}}>
+        <div style={{...CS,marginBottom:12,background:'#0f172a'}}>
+          <div style={{fontSize:12,color:'#fcd34d',fontWeight:700,letterSpacing:1}}>YOUR QUESTION</div>
+          <div style={{fontSize:16,color:'#fff',marginTop:4}}>{A.question}</div>
+        </div>
+        {A.why&&<div style={{...CS,marginBottom:12,borderLeft:'4px solid #b91c1c'}}>
+          <h3 style={AG_H}>Why this is happening now</h3>
+          {A.why.reasons.map((r,i)=><p key={i} style={AG_P}>• {r}</p>)}
+          {A.why.relief.length>0&&<><div style={{fontSize:13,fontWeight:700,color:'#166534',margin:'10px 0 4px'}}>When it eases</div>
+            {A.why.relief.map((r,i)=><p key={i} style={AG_P}>→ {r}.</p>)}</>}
+        </div>}
+        {A.topics.map(t=><AgTopic key={t.key} t={t} fmt={fmt}/>)}
+        <div style={{...CS,marginBottom:12}}>
+          <label style={lbl}>Ask another question about this same chart</label>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <input style={{...inp,flex:'1 1 240px'}} value={follow} onChange={e=>sFollow(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')askFollow();}} placeholder="e.g. When will he marry?"/>
+            <button style={{...BS,width:'auto',padding:'10px 18px'}} onClick={()=>askFollow()}>Ask</button>
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:8}}>
+            {AG_QUICK.map(x=><button key={x} onClick={()=>askFollow(x)} style={{border:'1px solid #e2e8f0',background:'#fff',color:'#334155',borderRadius:999,padding:'5px 10px',fontSize:12,cursor:'pointer'}}>{x}</button>)}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Current period ─── */}
+      <div style={{...CS,marginBottom:12}}>
+        <h3 style={AG_H}>Your current planetary period</h3>
+        {[['Major period (Mahadasha)',P.md,P.mdTheme],['Sub-period (Antardasha)',P.ad,P.adTheme],P.pd?['Sub-sub-period (Pratyantar)',P.pd,P.pdTheme]:null].filter(Boolean).map(([k,per,th])=>
+          <div key={k} style={{marginBottom:10}}>
+            <div style={{fontSize:14,fontWeight:700,color:'#0f172a'}}>{k}: {per.lord} <span style={AG_SMALL}>({fmt(per.start)} – {fmt(per.end)})</span>
+              {' '}<span style={AG_BADGE(...(th.supportive?AG_LEVEL.Strong:th.hard?AG_LEVEL.Challenged:AG_LEVEL.Mixed))}>{th.supportive?'Supportive':th.hard?'Difficult':'Mixed'}</span></div>
+            <p style={AG_P}>{th.text} For your ascendant it is {th.nature}.</p>
+            <p style={AG_SMALL}>Activates: {th.themes.join(' · ')}</p>
+          </div>)}
+        {P.relation&&<p style={{...AG_P,fontStyle:'italic'}}>{P.relation}</p>}
+      </div>
+
+      {/* ─── Transits ─── */}
+      <div style={{...CS,marginBottom:12}}>
+        <h3 style={AG_H}>Planetary movements today</h3>
+        {R.transits.flags.length>0&&<div style={{marginBottom:12}}>{R.transits.flags.map((f,i)=>
+          <p key={i} style={{...AG_P,padding:'8px 10px',borderRadius:8,background:f.severity>=2?'#fee2e2':f.severity>0?'#ffedd5':'#dcfce7'}}>{f.text}</p>)}</div>}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:14,alignItems:'start'}}>
+          <AgChart title={'Transits\n'+fmt(R.now)} places={transitPlaces} lagnaSign={C.input.noTime?-1:C.lagna.sign}/>
+          <AgTable head={['Planet','Sign','From Moon','Effect']} rows={['Saturn','Jupiter','Rahu','Ketu'].map(p=>{const t=R.transits.planets[p];return[
+            <b>{p}</b>,t.signName+' '+TE.fmtDeg(t.deg),TE.ordinal(t.fromMoon),<span><span style={AG_BADGE(...(t.good?AG_LEVEL.Strong:AG_LEVEL.Challenged))}>{t.good?'Favourable':'Unfavourable'}</span> {t.text.replace(/^(Favourable|Unfavourable|Mixed)\.\s*/,'')} <span style={AG_SMALL}>Until {fmt(t.until)}.</span></span>];})}/>
+        </div>
+      </div>
+
+      {/* ─── Birth chart ─── */}
+      <div style={{...CS,marginBottom:12}}>
+        <h3 style={AG_H}>Birth chart (Rasi)</h3>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:14,alignItems:'start'}}>
+          <AgChart title="Rasi chart" places={natalPlaces} lagnaSign={C.input.noTime?-1:C.lagna.sign}/>
+          <AgTable head={['Planet','Sign','Nakshatra','House','Dignity','For you']} rows={TE.PLANETS.map(p=>{const pl=C.planets[p];return[
+            <b>{p}{pl.retro&&p!=='Rahu'&&p!=='Ketu'?' (R)':''}</b>,pl.signName+' '+TE.fmtDeg(pl.deg),pl.nak+' '+pl.pada,C.input.noTime?'–':pl.house,pl.dignity,pl.func.nature];})}/>
+        </div>
+        <p style={{...AG_SMALL,marginTop:8}}>{C.waxing?'Waxing':'Waning'} Moon, tithi {C.tithi>15?C.tithi-15:C.tithi} ({C.waxing?'Shukla':'Krishna'} paksha).</p>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:10,marginTop:10}}>
+          <div><div style={{fontSize:13,fontWeight:700,color:'#166534',marginBottom:4}}>Yogas</div>
+            {R.yogas.yogas.length?R.yogas.yogas.map((x,i)=><p key={i} style={AG_P}>✓ {x}</p>):<p style={AG_SMALL}>No major classical yoga detected.</p>}</div>
+          <div><div style={{fontSize:13,fontWeight:700,color:'#991b1b',marginBottom:4}}>Doshas</div>
+            {R.yogas.doshas.length?R.yogas.doshas.map((x,i)=><p key={i} style={AG_P}>• {x}</p>):<p style={AG_SMALL}>No major dosha detected.</p>}</div>
+        </div>
+      </div>
+
+      {/* ─── Gemstones ─── */}
+      <div style={{...CS,marginBottom:12}}>
+        <h3 style={AG_H}>Gemstone guidance</h3>
+        {C.input.noTime?<p style={AG_P}>Gemstones depend on the ascendant. Without a birth time, do not wear any gemstone. Use mantra and charity only.</p>:<>
+          {R.gemstones.recommended.length?R.gemstones.recommended.map((g,i)=><p key={i} style={AG_P}><b>{g.stone}</b>: {g.why}</p>):<p style={AG_P}>No planet is both benefic for your ascendant and well placed, so no gemstone is advised. Rely on mantra and charity.</p>}
+          <p style={{...AG_SMALL,marginTop:6}}>Wear a new stone on its planet's day, after a 3-day trial, and only if it is natural and untreated. {R.gemstones.never}</p>
+          <details style={{marginTop:6}}><summary style={{fontSize:13,color:'#92400e',cursor:'pointer'}}>Stones to avoid for this chart</summary>
+            {R.gemstones.avoid.map((g,i)=><p key={i} style={AG_P}>✗ {g.planet}: {g.why}</p>)}</details></>}
+      </div>
+
+      {/* ─── Dasha timeline ─── */}
+      <div style={{...CS,marginBottom:12}}>
+        <h3 style={AG_H}>Dasha timeline</h3>
+        <AgTable head={['Mahadasha','From','To']} rows={R.dasha.mds.filter(x=>x.end>new Date(Date.UTC(C.input.year,C.input.month-1,C.input.day))).slice(0,9).map(x=>[
+          <b style={{color:x.lord===P.md.lord?'#b45309':'#0f172a'}}>{x.lord}{x.lord===P.md.lord?' (running)':''}</b>,fmt(x.start),fmt(x.end)])}/>
+        <div style={{fontSize:13,fontWeight:700,color:'#334155',margin:'12px 0 4px'}}>Sub-periods in the running {P.md.lord} Mahadasha</div>
+        <AgTable head={['Antardasha','From','To']} rows={P.md.ads.map(x=>[<b style={{color:x.lord===P.ad.lord?'#b45309':'#0f172a'}}>{P.md.lord}–{x.lord}{x.lord===P.ad.lord?' (running)':''}</b>,fmt(x.start),fmt(x.end)])}/>
+      </div>
+
+      {/* ─── Upcoming changes ─── */}
+      <div style={{...CS,marginBottom:12}}>
+        <h3 style={AG_H}>Coming planetary changes (next 3 years)</h3>
+        <AgTable head={['Date','Planet','Moves from → to','For you (from Moon)']} rows={R.upcoming.map(u=>{const h=TE.houseFrom(C.moonSign,u.sign);return[fmt(u.date),u.planet,u.from+' → '+u.signName,TE.ordinal(h)+' from your Moon'];})}/>
+      </div>
+
+      {/* ─── Method ─── */}
+      <div style={{...CS,marginBottom:12,background:'#f8fafc'}}>
+        <h3 style={{...AG_H,fontSize:14}}>How Guru Ji reads this</h3>
+        <p style={AG_SMALL}>Sidereal zodiac with Lahiri ayanamsa; whole-sign houses from the ascendant; Vimshottari dasha from the Moon's nakshatra; mean Rahu/Ketu. Planetary positions are computed from the astronomy-engine ephemeris, accurate to within about an arc-minute. Transit results are counted from the Moon, as in the classical gochara tradition. A supportive period needs the dasha to activate the matter and Jupiter and Saturn to support it by transit. Events are most likely inside these periods; they are not hard deadlines, and nothing here is a guarantee. Health readings show sensitive periods, not diagnoses: always consult a doctor.</p>
+      </div>
+      <PDFBtn targetId="askguru-results" filename={`${(C.input.name||'GuruJi')}_Reading.pdf`}/>
+    </div>}
+  </div>);
+}
+
 function App(){
-  const [tab,sT]=useState('personal');
+  const [tab,sT]=useState('ask');
   const tabs=[
+    {id:'ask',label:'Ask Guru Ji',icon:'?'},
     {id:'personal',label:'Personal',icon:'*'},
     {id:'baby',label:'Baby Planner',icon:'bb'},
     {id:'newborn',label:'Newborn',icon:'*'},
@@ -2926,9 +3277,9 @@ function App(){
       <div style={{display:'flex',borderBottom:'1px solid #e2e8f0',marginTop:4,overflowX:'auto',background:'#f8fafc'}}>
         {tabs.map(t=><button key={t.id} onClick={()=>sT(t.id)} style={{flexShrink:0,padding:'10px 14px',fontSize:12,fontWeight:500,border:'none',background:'none',cursor:'pointer',borderBottom:tab===t.id?'3px solid #d97706':'3px solid transparent',color:tab===t.id?'#d97706':'#64748b',whiteSpace:'nowrap'}}>{t.icon} {t.label}</button>)}</div></div>
     <div style={{maxWidth:920,margin:'0 auto',padding:'16px'}}>
-      {tab==='personal'&&<PersonalReading/>}{tab==='baby'&&<BabyPlanner/>}{tab==='newborn'&&<NewbornAnalysis/>}{tab==='compare'&&<DateCompare/>}{tab==='names'&&<NameFinder/>}{tab==='muhurat'&&<EventMuhurat/>}{tab==='marriage'&&<MarriageCompat/>}</div>
+      {tab==='ask'&&<AskGuruJi/>}{tab==='personal'&&<PersonalReading/>}{tab==='baby'&&<BabyPlanner/>}{tab==='newborn'&&<NewbornAnalysis/>}{tab==='compare'&&<DateCompare/>}{tab==='names'&&<NameFinder/>}{tab==='muhurat'&&<EventMuhurat/>}{tab==='marriage'&&<MarriageCompat/>}</div>
     <div style={{textAlign:'center',padding:16,color:'#94a3b8',fontSize:8,borderTop:'1px solid #111827',marginTop:20}}>
-      Guru Ji AstroPalm V6 | 7 Tabs | Chaldean+Kua: 10/10 | Vedic: verify Nakshatra from Panchang | Marriage: 8.5/10 | Muhurat: 7/10</div>
+      Guru Ji AstroPalm V6 | 8 Tabs | Chaldean+Kua: 10/10 | Vedic: verify Nakshatra from Panchang | Marriage: 8.5/10 | Muhurat: 7/10</div>
   </div>);
 }
 
