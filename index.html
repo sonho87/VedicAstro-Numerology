@@ -3096,9 +3096,10 @@ function AskGuruJi(){
   const inp={...IS,fontSize:14,padding:'10px 12px'};
   const sel={...SS,fontSize:14,padding:'10px 12px'};
 
-  let natalPlaces={},transitPlaces={};
+  let natalPlaces={},transitPlaces={},d9Places={},d10Places={};
   if(R){
-    TE.PLANETS.forEach(p=>{const pl=R.chart.planets[p];(natalPlaces[pl.sign]=natalPlaces[pl.sign]||[]).push(AG_ABBR[p]+(pl.retro&&p!=='Rahu'&&p!=='Ketu'?'(R)':''));});
+    TE.PLANETS.forEach(p=>{const pl=R.chart.planets[p];(natalPlaces[pl.sign]=natalPlaces[pl.sign]||[]).push(AG_ABBR[p]+(pl.retro&&p!=='Rahu'&&p!=='Ketu'?'(R)':''));
+      (d9Places[pl.d9.sign]=d9Places[pl.d9.sign]||[]).push(AG_ABBR[p]+(pl.vargottama?'ᵛ':''));(d10Places[pl.d10.sign]=d10Places[pl.d10.sign]||[]).push(AG_ABBR[p]);});
     Object.entries(R.transits.planets).forEach(([p,t])=>{(transitPlaces[t.sign]=transitPlaces[t.sign]||[]).push(AG_ABBR[p]);});
   }
   const C=R&&R.chart, P=R&&R.period;
@@ -3210,12 +3211,27 @@ function AskGuruJi(){
 
       {/* ─── Birth chart ─── */}
       <div style={{...CS,marginBottom:12}}>
-        <h3 style={AG_H}>Birth chart (Rasi)</h3>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:14,alignItems:'start'}}>
-          <AgChart title="Rasi chart" places={natalPlaces} lagnaSign={C.input.noTime?-1:C.lagna.sign}/>
-          <AgTable head={['Planet','Sign','Nakshatra','House','Dignity','For you']} rows={TE.PLANETS.map(p=>{const pl=C.planets[p];return[
-            <b>{p}{pl.retro&&p!=='Rahu'&&p!=='Ketu'?' (R)':''}</b>,pl.signName+' '+TE.fmtDeg(pl.deg),pl.nak+' '+pl.pada,C.input.noTime?'–':pl.house,pl.dignity,pl.func.nature];})}/>
+        <h3 style={AG_H}>Birth chart and divisional charts</h3>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:14,alignItems:'start',marginBottom:12}}>
+          <div><AgChart title="Rasi (D1)" places={natalPlaces} lagnaSign={C.input.noTime?-1:C.lagna.sign}/><p style={{...AG_SMALL,textAlign:'center',marginTop:4}}>The birth chart: what life promises.</p></div>
+          <div><AgChart title={'Navamsa (D9)'} places={d9Places} lagnaSign={C.input.noTime?-1:C.d9.lagnaSign}/><p style={{...AG_SMALL,textAlign:'center',marginTop:4}}>Marriage and the true strength of each planet. ᵛ = Vargottama.</p></div>
+          <div><AgChart title={'Dashamsa (D10)'} places={d10Places} lagnaSign={C.input.noTime?-1:C.d10.lagnaSign}/><p style={{...AG_SMALL,textAlign:'center',marginTop:4}}>Career, profession and status.</p></div>
         </div>
+        <AgTable head={['Planet','Sign','Nakshatra','House','Dignity','D9 (Navamsa)','D10 (Dashamsa)','For you']} rows={TE.PLANETS.map(p=>{const pl=C.planets[p];const nd=p==='Rahu'||p==='Ketu';return[
+          <b>{p}{pl.retro&&!nd?' (R)':''}</b>,pl.signName+' '+TE.fmtDeg(pl.deg),pl.nak+' '+pl.pada,C.input.noTime?'–':pl.house,pl.dignity,
+          <span>{pl.d9.signName}{!nd&&pl.d9.dignity!=='neutral'&&pl.d9.dignity!=='friendly'&&pl.d9.dignity!=='enemy'?<b style={{color:pl.d9.dignity==='debilitated'?'#b91c1c':'#166534'}}> {pl.d9.dignity}</b>:''}{pl.vargottama&&!nd?<b style={{color:'#166534'}}> · Vargottama</b>:''}</span>,
+          <span>{pl.d10.signName}{!nd&&(pl.d10.dignity==='exalted'||pl.d10.dignity==='own'||pl.d10.dignity==='debilitated')?<b style={{color:pl.d10.dignity==='debilitated'?'#b91c1c':'#166534'}}> {pl.d10.dignity}</b>:''}</span>,
+          pl.func.nature];})}/>
+        {(()=>{const V=TE.PLANETS.filter(p=>p!=='Rahu'&&p!=='Ketu'&&C.planets[p].vargottama),W=TE.PLANETS.filter(p=>p!=='Rahu'&&p!=='Ketu'&&C.planets[p].d9.dignity==='debilitated'&&!C.planets[p].vargottama),
+          S=TE.PLANETS.filter(p=>p!=='Rahu'&&p!=='Ketu'&&!C.planets[p].vargottama&&(C.planets[p].d9.dignity==='exalted'||C.planets[p].d9.dignity==='own'));
+          return(<div style={{marginTop:10}}>
+            {V.length>0&&<p style={AG_P}><b style={{color:'#166534'}}>Vargottama:</b> {V.join(', ')}. Same sign in D1 and D9, so these planets are reliably strong.</p>}
+            {S.length>0&&<p style={AG_P}><b style={{color:'#166534'}}>Stronger in D9:</b> {S.join(', ')}. Own or exalted in the Navamsa, so they deliver more than the birth chart alone suggests.</p>}
+            {W.length>0&&<p style={AG_P}><b style={{color:'#b91c1c'}}>Weaker in D9:</b> {W.join(', ')}. Debilitated in the Navamsa, so they deliver less than the birth chart suggests.</p>}
+            {!C.input.noTime&&<p style={AG_SMALL}>D9 ascendant {C.d9.lagnaName}; D10 ascendant {C.d10.lagnaName}.</p>}
+            {C.input.noTime&&<p style={{...AG_P,color:'#9a3412'}}>Without a birth time the D9 and D10 ascendants are unknown. Planet signs in D9 and D10 are still shown, but the Moon's may be wrong, since it changes D9 sign about every 6 hours.</p>}
+            {!C.input.noTime&&C.vargaWarnings.map((w,i)=><p key={i} style={{...AG_P,color:'#9a3412'}}>⚠ {w}</p>)}
+          </div>);})()}
         <p style={{...AG_SMALL,marginTop:8}}>{C.waxing?'Waxing':'Waning'} Moon, tithi {C.tithi>15?C.tithi-15:C.tithi} ({C.waxing?'Shukla':'Krishna'} paksha).</p>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:10,marginTop:10}}>
           <div><div style={{fontSize:13,fontWeight:700,color:'#166534',marginBottom:4}}>Yogas</div>
@@ -3253,7 +3269,7 @@ function AskGuruJi(){
       {/* ─── Method ─── */}
       <div style={{...CS,marginBottom:12,background:'#f8fafc'}}>
         <h3 style={{...AG_H,fontSize:14}}>How Guru Ji reads this</h3>
-        <p style={AG_SMALL}>Sidereal zodiac with Lahiri ayanamsa; whole-sign houses from the ascendant; Vimshottari dasha from the Moon's nakshatra; mean Rahu/Ketu. Planetary positions are computed from the astronomy-engine ephemeris, accurate to within about an arc-minute. Transit results are counted from the Moon, as in the classical gochara tradition. A supportive period needs the dasha to activate the matter and Jupiter and Saturn to support it by transit. Events are most likely inside these periods; they are not hard deadlines, and nothing here is a guarantee. Health readings show sensitive periods, not diagnoses: always consult a doctor.</p>
+        <p style={AG_SMALL}>Sidereal zodiac with Lahiri ayanamsa; whole-sign houses from the ascendant; D9 Navamsa and D10 Dashamsa by the classical Parashari division; Vimshottari dasha from the Moon's nakshatra; mean Rahu/Ketu. Planetary positions are computed from the astronomy-engine ephemeris, accurate to within about an arc-minute. Transit results are counted from the Moon, as in the classical gochara tradition. A supportive period needs the dasha to activate the matter and Jupiter and Saturn to support it by transit. Events are most likely inside these periods; they are not hard deadlines, and nothing here is a guarantee. Health readings show sensitive periods, not diagnoses: always consult a doctor.</p>
       </div>
       <PDFBtn targetId="askguru-results" filename={`${(C.input.name||'GuruJi')}_Reading.pdf`}/>
     </div>}

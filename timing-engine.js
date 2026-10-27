@@ -216,6 +216,51 @@
     return aspectsSigns(p, fromSign).indexOf(targetSign) >= 0;
   }
 
+  // ───────────────────────── divisional charts ─────────────────────────
+  // D9 Navamsa: nine parts of 3°20′. Counted continuously through the zodiac, which is the
+  // same as the classical rule (movable signs start from themselves, fixed from the 9th, dual from the 5th).
+  function d9Sign(lon) { return Math.floor(norm(lon) / (30 / 9)) % 12; }
+  // D10 Dashamsa: ten parts of 3°. Odd signs start from themselves, even signs from the 9th.
+  function d10Sign(lon) { var s = signOf(lon), part = Math.floor((norm(lon) - s * 30) / 3); return ((s % 2 === 0 ? s : s + 8) + part) % 12; }
+  function vargaChart(chart, fn, name) {
+    var L = fn(chart.lagna.lon), pl = {};
+    PLANETS.forEach(function (p) {
+      var sg = fn(chart.planets[p].lon);
+      pl[p] = { sign: sg, signName: SIGNS[sg], house: houseFrom(L, sg), dignity: dignity(p, sg) };
+    });
+    return {
+      name: name, lagnaSign: L, lagnaName: SIGNS[L], planets: pl,
+      houseLord: function (h) { return SIGN_LORD[signAt(L, h)]; },
+      occupants: function (h) { return PLANETS.filter(function (p) { return pl[p].house === h; }); }
+    };
+  }
+  // Degrees between the lagna and the nearest edge of its divisional part.
+  function partEdge(lon, size) { var x = norm(lon) % size; return Math.min(x, size - x); }
+  function finishVargas(chart) {
+    chart.d9 = vargaChart(chart, d9Sign, 'D9 Navamsa');
+    chart.d10 = vargaChart(chart, d10Sign, 'D10 Dashamsa');
+    PLANETS.forEach(function (p) {
+      var pl = chart.planets[p];
+      pl.d9 = chart.d9.planets[p]; pl.d10 = chart.d10.planets[p];
+      pl.vargottama = pl.d9.sign === pl.sign;
+    });
+    var w = [];
+    // The ascendant moves roughly 1° every 4 minutes, so 0.5° is about 2 minutes of birth time.
+    if (partEdge(chart.lagna.lon, 30 / 9) < 0.5) w.push('The D9 (Navamsa) ascendant is within about 2 minutes of birth time of changing sign. Treat D9 house readings as uncertain unless the birth time is exact.');
+    if (partEdge(chart.lagna.lon, 3) < 0.5) w.push('The D10 (Dashamsa) ascendant is within about 2 minutes of birth time of changing sign. Treat D10 career readings as uncertain unless the birth time is exact.');
+    chart.vargaWarnings = w;
+    return chart;
+  }
+  // Navamsa strength of a planet: confirms or contradicts its birth-chart dignity.
+  function d9Strength(chart, p) {
+    if (p === 'Rahu' || p === 'Ketu') return null;
+    var pl = chart.planets[p];
+    if (pl.vargottama) return { v: 1, t: p + ' is Vargottama (same sign in the birth chart and the Navamsa), which makes it reliably strong.' };
+    if (pl.d9.dignity === 'exalted' || pl.d9.dignity === 'own') return { v: 1, t: p + ' is ' + pl.d9.dignity + ' in the Navamsa (D9), so it delivers more than the birth chart alone suggests.' };
+    if (pl.d9.dignity === 'debilitated') return { v: -1.5, t: p + ' is debilitated in the Navamsa (D9), so it delivers less than the birth chart suggests.' };
+    return null;
+  }
+
   // ───────────────────────── chart ─────────────────────────
   function buildChart(input) {
     var tz = (input.tz === undefined || input.tz === null || input.tz === '') ?
@@ -240,7 +285,7 @@
     var elong = norm(lons.Moon - lons.Sun);
     var ascNi = Math.floor(asc / NAK_SPAN);
     var degInSign = asc - lagnaSign * 30;
-    return {
+    var chart = {
       input: input, tz: tz, time: t, birthDate: t.date,
       lagna: { lon: asc, sign: lagnaSign, signName: SIGNS[lagnaSign], deg: degInSign, nak: NAKS[ascNi], lord: SIGN_LORD[lagnaSign] },
       cuspWarning: (degInSign < 1 || degInSign > 29) ?
@@ -257,6 +302,7 @@
         return PLANETS.filter(function (p) { return planets[p].house !== h && aspectsSign(p, planets[p].sign, target); });
       }
     };
+    return finishVargas(chart);
   }
 
   // ───────────────────────── Vimshottari dasha ─────────────────────────
@@ -487,6 +533,7 @@
     if ([1, 4, 7, 10, 5, 9].indexOf(lp.house) >= 0) add(1, lord + ' (' + ordinal(H) + ' lord) is placed in the ' + ordinal(lp.house) + ', a strong house.');
     if ([6, 8, 12].indexOf(lp.house) >= 0 && !(H === 6 || H === 8 || H === 12)) add(-1.5, lord + ' (' + ordinal(H) + ' lord) is placed in the ' + ordinal(lp.house) + ' (a dusthana), which weakens and delays this area.');
     if (lp.retro && lord !== 'Rahu' && lord !== 'Ketu') pos.push(lord + ' is retrograde: results come after repeated effort or delay.');
+    var ld9 = d9Strength(chart, lord); if (ld9) add(ld9.v, 'Your ' + ordinal(H) + ' lord ' + ld9.t);
 
     chart.occupants(H).forEach(function (p) {
       var d = chart.planets[p].dignity;
@@ -507,6 +554,7 @@
       if (kd >= 1) add(1, 'The significator ' + k + ' is ' + kp.dignity + ' in ' + kp.signName + '.');
       if (kd <= -2) add(-1.5, 'The significator ' + k + ' is debilitated in ' + kp.signName + '.');
       if ([6, 8, 12].indexOf(kp.house) >= 0 && k !== 'Rahu') add(-0.5, 'The significator ' + k + ' is in your ' + ordinal(kp.house) + ' house.');
+      if (k !== chart.houseLord(H)) { var kd9 = d9Strength(chart, k); if (kd9) add(kd9.v, 'The significator ' + kd9.t); }
     });
 
     var extra = topicSpecific(chart, key);
@@ -527,12 +575,40 @@
       if (P.Rahu.house === 7 || P.Ketu.house === 7 || P.Rahu.house === 1 || P.Ketu.house === 1) neg.push([-0.5, 'Rahu/Ketu fall across your 1st–7th axis: unconventional match, or misunderstandings to manage.']);
       var v = P.Venus;
       if (Math.abs(norm(v.lon - P.Sun.lon + 180) - 180) < 10) neg.push([-0.5, 'Venus is combust (within 10° of the Sun), weakening the marriage significator.']);
+      if (!chart.input.noTime) {
+        var N = chart.d9, n7 = N.houseLord(7), q = N.planets[n7];
+        if (q.dignity === 'exalted' || q.dignity === 'own') pos.push([1, 'In the Navamsa (D9, the marriage chart) the 7th lord ' + n7 + ' is ' + q.dignity + ' in ' + q.signName + '.']);
+        if (q.dignity === 'debilitated') neg.push([-1, 'In the Navamsa (D9) the 7th lord ' + n7 + ' is debilitated in ' + q.signName + '.']);
+        if ([6, 8, 12].indexOf(q.house) >= 0) neg.push([-1, 'In the Navamsa (D9) the 7th lord ' + n7 + ' falls in the ' + ordinal(q.house) + ' house: marriage needs patience and adjustment.']);
+        else if ([1, 4, 7, 10, 5, 9].indexOf(q.house) >= 0) pos.push([0.5, 'In the Navamsa (D9) the 7th lord ' + n7 + ' is in the ' + ordinal(q.house) + ', a strong house.']);
+        N.occupants(7).forEach(function (p) {
+          if (['Jupiter', 'Venus', 'Mercury'].indexOf(p) >= 0) pos.push([0.5, p + ' occupies the 7th house of the Navamsa (D9).']);
+          else if (['Saturn', 'Mars', 'Rahu', 'Ketu'].indexOf(p) >= 0) neg.push([-0.5, p + ' occupies the 7th house of the Navamsa (D9): friction or delay in married life.']);
+        });
+        notes.push('Navamsa (D9) ascendant: ' + N.lagnaName + '; D9 7th house: ' + SIGNS[signAt(N.lagnaSign, 7)] + ', ruled by ' + n7 + '.');
+      }
     }
     if (key === 'career') {
       if (mutual(L(9), L(10)) && L(9) !== L(10)) pos.push([1.5, 'Dharma–Karma Adhipati yoga: your 9th lord ' + L(9) + ' and 10th lord ' + L(10) + ' are connected. A strong career yoga.']);
       if (chart.occupants(10).length === 0) notes.push('No planets in your 10th house: career follows the 10th lord ' + L(10) + ' and the running dasha.');
       if (P[L(10)].house === 6) notes.push('Your 10th lord sits in the 6th: you are suited to employment and service rather than your own business.');
       if (P[L(10)].house === 7) notes.push('Your 10th lord sits in the 7th: business, partnerships or client-facing work suit you.');
+      if (!chart.input.noTime) {
+        var D = chart.d10, t10 = D.houseLord(10), r = D.planets[t10];
+        if (r.dignity === 'exalted' || r.dignity === 'own') pos.push([1, 'In the Dashamsa (D10, the career chart) the 10th lord ' + t10 + ' is ' + r.dignity + ' in ' + r.signName + '.']);
+        if (r.dignity === 'debilitated') neg.push([-1, 'In the Dashamsa (D10) the 10th lord ' + t10 + ' is debilitated in ' + r.signName + '.']);
+        if ([6, 8, 12].indexOf(r.house) >= 0) neg.push([-1, 'In the Dashamsa (D10) the 10th lord ' + t10 + ' falls in the ' + ordinal(r.house) + ' house: career progress comes through setbacks.']);
+        else if ([1, 4, 7, 10, 5, 9].indexOf(r.house) >= 0) pos.push([0.5, 'In the Dashamsa (D10) the 10th lord ' + t10 + ' is in the ' + ordinal(r.house) + ', a strong house.']);
+        var b10 = D.planets[L(10)].house;
+        if ([1, 4, 7, 10, 5, 9].indexOf(b10) >= 0) pos.push([0.5, 'Your birth-chart 10th lord ' + L(10) + ' lands in the ' + ordinal(b10) + ' house of the Dashamsa (D10).']);
+        if ([6, 8, 12].indexOf(b10) >= 0) neg.push([-0.5, 'Your birth-chart 10th lord ' + L(10) + ' lands in the ' + ordinal(b10) + ' house of the Dashamsa (D10).']);
+        D.occupants(10).forEach(function (p) {
+          var dg = D.planets[p].dignity;
+          if (dg === 'debilitated') neg.push([-0.5, p + ' sits debilitated in the 10th house of the Dashamsa (D10).']);
+          else pos.push([0.5, p + ' sits in the 10th house of the Dashamsa (D10), shaping the kind of work: ' + ({ Sun: 'authority and government', Moon: 'public dealing and care', Mars: 'technical, engineering or uniformed work', Mercury: 'trade, analysis, writing and communication', Jupiter: 'teaching, advisory, law and finance', Venus: 'arts, luxury, hospitality and design', Saturn: 'operations, labour-heavy industries and long-term service', Rahu: 'technology, foreign companies and unconventional fields', Ketu: 'research, niche technical and spiritual work' })[p] + '.']);
+        });
+        notes.push('Dashamsa (D10) ascendant: ' + D.lagnaName + '; D10 10th house: ' + SIGNS[signAt(D.lagnaSign, 10)] + ', ruled by ' + t10 + '.');
+      }
     }
     if (key === 'abroad') {
       var ind = [];
@@ -723,11 +799,12 @@
       var pl = P[p], f = pl.func.nature;
       var benefic = /benefic|yogakaraka/.test(f) && f.indexOf('malefic') < 0;
       var weakPlace = [6, 8, 12].indexOf(pl.house) >= 0;
-      if (benefic && !weakPlace && pl.dignity !== 'debilitated') ok.push({ planet: p, stone: REMEDY[p].stone, why: p + ' is ' + f + ' for ' + chart.lagna.signName + ' ascendant and well placed in your ' + ordinal(pl.house) + '.' });
+      if (benefic && !weakPlace && pl.dignity !== 'debilitated' && pl.d9.dignity === 'debilitated') avoid.push({ planet: p, why: p + ' is benefic for you but debilitated in the Navamsa (D9), so a stone is not advised. Use mantra and charity.' });
+      else if (benefic && !weakPlace && pl.dignity !== 'debilitated') ok.push({ planet: p, stone: REMEDY[p].stone, why: p + ' is ' + f + ' for ' + chart.lagna.signName + ' ascendant and well placed in your ' + ordinal(pl.house) + '.' });
       else if (!benefic) avoid.push({ planet: p, why: p + ' is ' + f + ' for your ascendant (rules ' + pl.owns.map(ordinal).join(' & ') + '). Strengthening it with a stone strengthens those problems too.' });
       else avoid.push({ planet: p, why: p + ' is benefic for you but ' + (weakPlace ? 'placed in the ' + ordinal(pl.house) : 'debilitated') + '. Use mantra and charity rather than a stone.' });
     });
-    ok.sort(function (a, b) { return (P[b.planet].func.score) - (P[a.planet].func.score); });
+    ok.sort(function (a, b) { return (P[b.planet].func.score + (P[b.planet].vargottama ? 0.5 : 0)) - (P[a.planet].func.score + (P[a.planet].vargottama ? 0.5 : 0)); });
     return { recommended: ok.slice(0, 2), avoid: avoid, never: 'Never wear stones of enemy planets together (e.g. Ruby with Blue Sapphire, Pearl with Blue Sapphire, Coral with Blue Sapphire or Emerald, Yellow Sapphire with Diamond).' };
   }
 
@@ -924,7 +1001,7 @@
     SIGNS: SIGNS, SIGNS_SKT: SIGNS_SKT, SIGN_LORD: SIGN_LORD, PLANETS: PLANETS, NAKS: NAKS, TOPICS: TOPICS,
     DASHA_ORDER: DASHA_ORDER, DASHA_YEARS: DASHA_YEARS, HOUSE_MEANING: HOUSE_MEANING, REMEDY: REMEDY,
     // core
-    buildChart: buildChart, vimshottari: vimshottari, dashaAt: dashaAt, subPeriods: subPeriods,
+    buildChart: buildChart, d9Sign: d9Sign, d10Sign: d10Sign, vimshottari: vimshottari, dashaAt: dashaAt, subPeriods: subPeriods,
     transitReport: transitReport, ingresses: ingresses, signSpan: signSpan, analyze: analyze, classify: classify,
     siderealLongitudes: siderealLongitudes, ascendant: ascendant, ayanamsa: ayanamsa, lonOn: lonOn,
     makeTime: makeTime, indiaOffset: indiaOffset, dignity: dignity, signOf: signOf, houseFrom: houseFrom,
